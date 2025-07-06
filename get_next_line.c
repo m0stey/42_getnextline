@@ -6,79 +6,123 @@
 /*   By: alegeber <alegeber@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2025/05/26 14:53:20 by alegeber          #+#    #+#             */
-/*   Updated: 2025/07/05 01:17:38 by alegeber         ###   ########.fr       */
+/*   Updated: 2025/07/06 17:14:57 by alegeber         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "get_next_line.h"
 
-static char	*extract_line(char **stash)
+static char	*free_and_return_null(char *line, char *buffer)
 {
-	char	*line;
-	char	*next_stash;
-	size_t	len;
-
-	len = 0;
-	while ((*stash)[len] && (*stash)[len] != '\n')
-		len++;
-	if ((*stash)[len] == '\n')
-		len++;
-	line = ft_substr(*stash, 0, len);
-	if (!line)
-		return (NULL);
-	next_stash = ft_substr(*stash, len, ft_strlen(*stash) - len);
-	free(*stash);
-	*stash = next_stash;
-	if (*stash && (*stash)[0] == '\0')
-	{
-		free(*stash);
-		*stash = NULL;
-	}
-	return (line);
+	if (line)
+		free(line);
+	if (buffer)
+		buffer[0] = '\0';
+	return (NULL);
 }
 
-static char	*read_and_stash(int fd, char *stash)
+static char	*append_chunk_to_line(char *line, char *buffer, int chunk_len)
 {
-	char	*buffer;
-	int		bytes_read;
+	char	*new_line;
+	size_t	old_line_len;
 
-	buffer = (char *)malloc(sizeof(char) * (BUFFER_SIZE + 1));
-	if (!buffer)
-		return (free(stash), NULL);
-	bytes_read = 1;
-	while (bytes_read > 0)
+	old_line_len = ft_strlen(line);
+	new_line = (char *)malloc(sizeof(char) * (old_line_len + chunk_len + 1));
+	if (!new_line)
+		return (free_and_return_null(line, NULL));
+	ft_memcpy(new_line, line, old_line_len);
+	ft_memcpy(new_line + old_line_len, buffer, chunk_len);
+	new_line[old_line_len + chunk_len] = '\0';
+	free(line);
+	return (new_line);
+}
+
+static int	read_into_buffer(int fd, char *buffer)
+{
+	int	read_bytes;
+
+	read_bytes = read(fd, buffer, BUFFER_SIZE);
+	if (read_bytes >= 0)
+		buffer[read_bytes] = '\0';
+	return (read_bytes);
+}
+
+static char	*process_buffer(char *line, char *buffer, int *read_bytes)
+{
+	int	newline_pos;
+
+	newline_pos = ft_strpos(buffer, '\n');
+	if (newline_pos != -1)
 	{
-		if (ft_strchr(stash, '\n'))
-			break ;
-		bytes_read = read(fd, buffer, BUFFER_SIZE);
-		if (bytes_read < 0)
-			return (free(buffer), free(stash), NULL);
-		if (bytes_read == 0)
-			break ;
-		buffer[bytes_read] = '\0';
-		stash = ft_strjoin(stash, buffer);
-		if (!stash)
-			return (free(buffer), NULL);
+		line = append_chunk_to_line(line, buffer, newline_pos + 1);
+		if (!line)
+			return (NULL);
+		ft_memmove(buffer, buffer + newline_pos + 1, ft_strlen(buffer
+				+ newline_pos + 1));
+		buffer[ft_strlen(buffer + newline_pos + 1)] = '\0';
+		*read_bytes = 0;
+		return (line);
 	}
-	free(buffer);
-	return (stash);
+	line = append_chunk_to_line(line, buffer, ft_strlen(buffer));
+	if (!line)
+		return (NULL);
+	buffer[0] = '\0';
+	return (line);
 }
 
 char	*get_next_line(int fd)
 {
-	static char	*stash = NULL;
+	static char	buffer[BUFFER_SIZE + 1];
 	char		*line;
+	int			read_bytes;
 
 	if (fd < 0 || BUFFER_SIZE <= 0)
 		return (NULL);
-	stash = read_and_stash(fd, stash);
-	if (!stash)
-		return (NULL);
-	line = extract_line(&stash);
+	line = (char *)malloc(1);
 	if (!line)
+		return (NULL);
+	line[0] = '\0';
+	read_bytes = 1;
+	while (read_bytes > 0)
 	{
-		free(stash);
-		stash = NULL;
+		if (*buffer)
+		{
+			line = process_buffer(line, buffer, &read_bytes);
+			if (!line || read_bytes == 0)
+				return (line);
+		}
+		read_bytes = read_into_buffer(fd, buffer);
 	}
+	if (read_bytes < 0 || !*line)
+		return (free_and_return_null(line, buffer));
 	return (line);
 }
+
+// #include <stdio.h>   // Für printf
+// #include <fcntl.h>   // Für open
+// #include "get_next_line.h"
+
+// int	main(int argc, char **argv)
+// {
+// 	int		fd;
+// 	char	*line;
+
+// 	if (argc != 2 // no filename as arg
+// 		return (1);
+// 	fd = open(argv[1], O_RDONLY);
+// 	if (fd == -1)
+// 	{
+// 		printf("Error: File couldn't be opened.\n");
+// 		return (1);
+// 	}
+// 	while (1)
+// 	{
+// 		line = get_next_line(fd);
+// 		if (line == NULL)
+// 			break ;
+// 		printf("%s", line);
+// 		free(line);
+// 	}
+// 	close(fd);
+// 	return (0);
+// }
